@@ -1,5 +1,5 @@
 # SME
-SME_Microcontroller_Project
+SME Microcontroller Project
 
 This project is part of course Sensors and Microsystem Electronics as a part of MSc Photonics at VUB.be.
 
