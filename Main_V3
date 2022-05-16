@@ -243,10 +243,6 @@ SendDash:
 	;CLI
 RET
 
-upReg:
-	INC R31
-RET
-
 
 Delay:
 	LDI R28,255
