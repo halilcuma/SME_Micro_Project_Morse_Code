@@ -1,0 +1,536 @@
+.INCLUDE "m328pdef.inc" ; Load addresses of (I/O) registers
+
+.ORG 0x0000
+RJMP init	
+
+.org 0x0012
+rjmp TimerInterrupt
+
+.ORG 0x0020
+RJMP Timer0OverFlowInterrupt
+
+.EQU BUFFERBEGIN = 0x200
+
+.DEF  DataLength =    R4
+.DEF  Pattern    =    R5
+.DEF char		 = R25			; Register to store character data - button pressed
+
+;-----
+.equ bufferstore=0x100
+;-----
+init:
+
+;------LDC_INIT-------
+	SBI DDRB,3 ; Pin PB3 is an output (Data)
+	CBI PORTB,3 
+	SBI DDRB,4 ; Pin PB4 is an output (Latch Enable and Output Enable)
+	CBI PORTB,4 
+	SBI DDRB,5 ; Pin PB5 is an output (Clock)
+	CBI PORTB,5 
+
+	LDI XH,high(bufferstore)	;init X to point to the address 0x0100
+	LDI XL,low(bufferstore)
+	LDI R17,0x00
+
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+	LDI R17,0
+	ST X+,R17
+
+;-------LCD_END------------
+
+CLR char
+LDI R23, 0b00000100			;load Immediate 101 to R23(101: enable pre1024)
+OUT TCCR0b, R23				; timrt counter control register
+
+; set the correct reload values 238  
+LDI R24, 185				;256-(16MH/256)/880= 184.9
+OUT TCNT0, R24				; Timer counter register to initialization
+
+;----Timer2
+LDI R30, 0b00000111
+STS TCCR2B, R30
+;STS TCNT2, R24
+
+; global interrupt enable
+SEI		
+SBI DDRB,1
+SBI PORTB,1
+
+SBI DDRC,2
+SBI PORTC,2
+
+SBI DDRC,3
+SBI PORTC,3
+
+CBI	DDRD,3 ;INPUT
+CBI	DDRD,2
+CBI DDRD,1
+CBI DDRD,0
+
+SBI DDRD,7 ;OUTPUT
+SBI DDRD,6
+SBI DDRD,5
+SBI DDRD,4
+
+SBI PORTD,3 ;PULL RESITOR 
+SBI PORTD,2
+SBI PORTD,1
+SBI PORTD,0
+;RJMP MAIN
+
+;	LDI XH,high(bufferstore)	;init X to point to the address 0x0100
+;	LDI XL,low(bufferstore)
+
+/*LDI XH,0x01	;init X to point to the address 0x0100
+LDI XL,0x00*/
+
+
+MAIN:
+
+	LDI XH,0x01
+	LDI XL,0x00
+
+	CBI PORTD,7
+	SBI PORTD,6
+	SBI PORTD,5
+	SBI PORTD,4
+
+	SBIS PIND,0
+	RJMP BTNF
+	SBIS PIND,1
+	RJMP BTN9
+	SBIS PIND,2
+	RJMP BTN8
+	SBIS PIND,3
+	RJMP BTN7
+	
+	SBI PORTD,7
+	CBI PORTD,6
+	SBI PORTD,5
+	SBI PORTD,4
+
+	SBIS PIND,0
+	RJMP BTNE
+	SBIS PIND,1
+	RJMP BTN6
+	SBIS PIND,2
+	RJMP BTN5
+	SBIS PIND,3
+	RJMP BTN4
+
+	SBI PORTD,7
+	SBI PORTD,6
+	CBI PORTD,5
+	SBI PORTD,4
+
+	SBIS PIND,0
+	RJMP BTND
+	SBIS PIND,1
+	RJMP BTN3
+	SBIS PIND,2
+	RJMP BTN2
+	SBIS PIND,3
+	RJMP BTN1
+
+	SBI PORTD,7
+	SBI PORTD,6
+	SBI PORTD,5
+	CBI PORTD,4
+
+	SBIS PIND,0
+	RJMP BTNC
+	SBIS PIND,1
+	RJMP BTNB
+	SBIS PIND,2
+	RJMP BTN0
+	SBIS PIND,3
+	RJMP BTNA
+RJMP MAIN
+
+
+SendMores:
+	LDI ZL,low(BUFFERBEGIN)
+	LDI ZH,high(BUFFERBEGIN)
+
+	LDI ZL, Low(CodeTable<<1)
+	LDI ZH, High(CodeTable<<1)
+
+	;LDI R26,7
+	LDI R27,2
+	MUL char,R27
+	ADD ZL,R0
+	ADC ZH,R1
+	LPM DataLength,Z+
+	LPM Pattern, Z ;0x15 > 10101
+
+	PUSH R26
+	PUSH R28
+	PUSH R29
+		dotDashLoop:
+			RCALL SendDD
+			LDI R26, 50
+			RCALL Delay
+			DEC DataLength
+			BRNE dotDashLoop
+	POP R26
+	POP R28
+	POP R29
+RET
+;RJMP SendLED
+
+SendDD:
+	ROR Pattern
+	BRCC SendDot
+	RJMP SendDash
+RET
+
+SendDot:
+	;SEI	
+	CBI PORTC,2					; Turn ON LED3 
+	LDI R23, 0x01				; 
+	STS TIMSK0, R23				; Enable Overflow Interrupt
+	
+	LDI R26,50
+	RCALL Delay
+
+	SBI PORTC,2					; Turn OFF LED2
+	LDI R23, 0x00				; 
+	STS TIMSK0, R23				; Enable Overflow Interrupt
+	;CLI
+RET
+
+SendDash:
+	;SEI
+	CBI PORTC,3						; Turn ON LED3
+	LDI R23, 0x01				; 
+	STS TIMSK0, R23				; Enable Overflow Interrupt
+
+	LDI R26,150
+	RCALL Delay
+
+	LDI R23, 0x00				; 
+	STS TIMSK0, R23				; Enable Overflow Interrupt
+	SBI PORTC,3						; Turn OFF LED2
+	;CLI
+RET
+
+upReg:
+	INC R31
+RET
+
+
+Delay:
+	LDI R28,255
+	Loop: 
+		LDI R29,255
+		Loop2:
+			DEC R29
+		BRNE Loop2
+		DEC R28
+	BRNE Loop
+	DEC R26
+BRNE Delay
+RET
+
+DELAY_LCD:
+	PUSH  R16
+	LDI R16,200
+	LBL_DELAY:
+	dec r16
+	brne lbl_delay
+	pop r16
+ret
+
+BTNF:
+	LDI R17,15
+	ST X+,R17
+	LDI char, 0x0F
+	LDI R31,1
+	STS TIMSK2, R31
+	RCALL SendMores
+	LDI XL,0x04
+
+RJMP MAIN
+
+
+BTN7:
+	LDI R17,7
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x07
+	RCALL SendMores
+RJMP MAIN
+
+BTN9:
+	LDI R17,9
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x09
+	RCALL SendMores
+	;inc XL
+
+RJMP MAIN
+
+BTN8:
+
+	LDI R17,8
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x08
+	RCALL SendMores
+
+RJMP MAIN
+
+BTNE:
+	LDI R17,14
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x0E
+	RCALL SendMores
+RJMP MAIN
+
+BTN6:
+	LDI R17,6
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x06
+	RCALL SendMores
+
+RJMP MAIN
+
+BTN5:
+	LDI R17,5
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x05
+	RCALL SendMores
+RJMP MAIN
+
+BTN4:
+	LDI R17,4
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x04
+	RCALL SendMores
+RJMP MAIN
+
+BTN3:
+	LDI R17,3
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x03
+	RCALL SendMores
+RJMP MAIN
+
+BTN2:
+	LDI R17,2
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x02
+	RCALL SendMores
+RJMP MAIN
+
+BTN1:
+	LDI R17,1
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x01
+	RCALL SendMores
+RJMP MAIN
+
+
+BTN0:
+	LDI R17,0
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x00
+	RCALL SendMores
+RJMP MAIN
+
+BTNA:
+	INC XL
+	LDI R17,10
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x0A
+	RCALL SendMores
+
+RJMP MAIN
+
+BTNB:
+	INC XL
+	LDI R17,11
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x0B
+	RCALL SendMores
+RJMP MAIN
+
+BTNC:
+	LDI R17,12
+	ST X+,R17
+	LDI R31,1
+	STS TIMSK2, R31
+	LDI char, 0x0C
+	RCALL SendMores
+RJMP MAIN
+
+BTND:
+	LDI R17,13
+	ST X+,R17
+	LDI char, 0x0D
+	RCALL SendMores
+RJMP MAIN
+
+Timer0OverflowInterrupt:
+	SBI PINB,1							; Toggle BUZZER 
+RETI								; Return to Calling location from Interrupt
+	
+
+TimerInterrupt: 
+
+	;IN R3, SREG
+
+	LDI R18,0b00000001 ; First row
+	LDI R19,8	
+
+	Rows:
+  		LDI YH,0x01 ;init Y to point to the address 0x0100
+		LDI YL,0x0F ;load addresses to Y
+		LD R16,Y+ ;auto-increment the address after reading
+		LDI R20,16 ;number of blocks
+		Block_Loop:
+			;calculate offset in table depending on charvalue
+			LD R22,-Y ;  pre-decrement Y and load char value pointed by Y (from data memory/SRAM)
+			LDI ZH,high(CharTable<<1) ; load address table of chars into Z
+			LDI ZL,low(CharTable<<1) ; load address table of chars into Z
+			;Z=Z+8X+(rownumber-1)==> Z=Z+R22*8+(R19-1):
+			LDI R17,8   
+			MUL R22,R17 ;X*8 
+			ADD ZL,R0 
+			ADC ZH,R1
+			MOV R16,R19 
+			DEC R16	;rownumber-1
+			CLR R6
+			ADD ZL,R16
+			ADC ZH,R6
+			LPM R22,Z	;Load Program Memory (loads data to send to the screen pointed by Z)
+			CLC ;Clear Carry
+			LDI R21,5 ;number of shifts for column data per block=number of columns per display
+			Columns:  
+				CBI PORTB,3 ;Clear First Bit
+				ROR R22 
+				BRCC Carry_Is_0_Col ;Branch if Carry is Cleared (BRCC)
+				SBI PORTB,3 ;Set PINB3 if the carry is set, then execute next line
+				Carry_Is_0_Col:
+					CBI PORTB,5 
+					SBI PORTB,5 ;create rising edge of PB5 to shift
+				DEC R21
+			BRNE Columns 
+			DEC R20 
+		BRNE Block_Loop 
+
+		LDI R17,8 
+		CLC
+		ROR_loop:
+			CBI PORTB,3 ;Clear First Bit 
+			ROR R18
+			BRCC Carry_Is_0_Row ;Branch if Carry is Cleared (BRCC)
+			SBI PORTB,3 ;Set PINB3 if the carry is set, then execute next line 
+			Carry_Is_0_Row:
+				CBI PORTB,5 
+				SBI PORTB,5	;create rising edge of PB5 to shift
+			DEC R17
+		BRNE ROR_loop
+		CBI PORTB,4	
+		SBI PORTB,4; rising edge at PB4 to Latch the data in the output register
+		
+		rcall DELAY_LCD
+
+		CBI PORTB,4	;enable the output of the shift register
+		DEC R19
+	BRNE Rows
+	;OUT SREG, R3
+
+RETI
+
+
+CodeTable:
+	.db 5, 0b11111 ; [0] 
+	.db 5, 0b11110 ; [1] 
+	.db 5, 0b11100 ; [2] 
+	.db 5, 0b11000 ; [3] 
+	.db 2, 0b10000 ; [4] 
+	.db 5, 0b00000 ; [5] 
+	.db 5, 0b00001 ; [6] 
+	.db 5, 0b00011 ; [7] 
+	.db 5, 0b00111 ; [8] 
+	.db 5, 0b01111;  [9] 
+	.db 2, 0b10 ;    [A] 
+	.db 4, 0b0001 ;  [B] 
+	.db 4, 0b0101 ;  [C] 
+	.db 3, 0b001 ;   [D] 
+	.db 1, 0b0 ;     [E] 
+	.db 4, 0b0100 ;  [F] 
+
+
+CharTable:
+	.db 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000 ; SPACE
+	.db 0b00010, 0b00110, 0b01010, 0b00010, 0b00010, 0b00010, 0b00010, 0b00000 ; 1
+	.db 0b01111, 0b00001, 0b00001, 0b01111, 0b01000, 0b01000, 0b01111, 0b00000 ; 2
+	.db 0b01111, 0b00001, 0b00001, 0b01111, 0b00001, 0b00001, 0b01111, 0b00000 ; 3
+	.db 0b01001, 0b01001, 0b01001, 0b01111, 0b00001, 0b00001, 0b00001, 0b00000 ; 4
+	.db 0b01111, 0b01000, 0b01000, 0b01111, 0b00001, 0b00001, 0b01111, 0b00000 ; 5
+	.db 0b01111, 0b01000, 0b01000, 0b01111, 0b01001, 0b01001, 0b01111, 0b00000 ; 6
+	.db 0b01111, 0b00001, 0b00001, 0b00010, 0b00100, 0b00100, 0b00100, 0b00000 ; 7
+	.db 0b01111, 0b01001, 0b01001, 0b01111, 0b01001, 0b01001, 0b01111, 0b00000 ; 8
+	.db 0b01111, 0b01001, 0b01001, 0b01111, 0b00001, 0b00001, 0b01111, 0b00000 ; 9
+	.db 0b00110, 0b01001, 0b01001, 0b01001, 0b01111, 0b01001, 0b01001, 0b00000 ; A
+	.db 0b01110, 0b01001, 0b01001, 0b01110, 0b01001, 0b01001, 0b01110, 0b00000 ; B
+	.db 0b00110, 0b01001, 0b01000, 0b01000, 0b01000, 0b01001, 0b00110, 0b00000 ; C
+	.db 0b01110, 0b01001, 0b01001, 0b01001, 0b01001, 0b01001, 0b01110, 0b00000 ; D
+	.db 0b01111, 0b01000, 0b01000, 0b01111, 0b01000, 0b01000, 0b01111, 0b00000 ; E
+	.db 0b01111, 0b01000, 0b01000, 0b01110, 0b01000, 0b01000, 0b01000, 0b00000 ; F
+
